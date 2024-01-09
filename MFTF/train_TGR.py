@@ -31,7 +31,7 @@ parser = TMFModel.init_args(parser)
 def main():
     args = parser.parse_args()
     # args.reduce_dataset_size 裁剪验证集，不写或者为0就是整个验证集
-    args.reduce_dataset_size = 50
+    # args.reduce_dataset_size = 50
     dataset = ArgoCSVDataset(args.val_split, args.val_split_pre, args)
     
     val_loader = DataLoader(
@@ -43,7 +43,7 @@ def main():
     )
     # 整个训练集长度为199908，args.reduce_dataset_size裁剪训练集，不写或者为0就是整个训练集
     # args.reduce_dataset_size = 66636
-    args.reduce_dataset_size = 50
+    # args.reduce_dataset_size = 50
     dataset = ArgoCSVDataset(args.train_split, args.train_split_pre, args)
     print(len(dataset))
     train_loader = DataLoader(
