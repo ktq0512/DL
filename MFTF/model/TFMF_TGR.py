@@ -80,8 +80,8 @@ class TMFModel(pl.LightningModule):
             "--lr_step_epochs", type=list, default=[40,50])
         parser_training.add_argument("--wd", type=float, default=0.01)
         # batch_size可调
-        parser_training.add_argument("--batch_size", type=int, default=16)
-        parser_training.add_argument("--val_batch_size", type=int, default=16)
+        parser_training.add_argument("--batch_size", type=int, default=32)
+        parser_training.add_argument("--val_batch_size", type=int, default=32)
         parser_training.add_argument("--workers", type=int, default=0)
         parser_training.add_argument("--val_workers", type=int, default=0)
         parser_training.add_argument("--gpus", type=int, default=1)
@@ -113,33 +113,8 @@ class TMFModel(pl.LightningModule):
         # Extract the number of agents in each sample of the current batch
         # List，并且length=batch_size，统计了displ中每个tensor的agent_num
         agents_per_sample = [x.shape[0] for x in displ]
-        max_agent_nums = max(agents_per_sample)
-        padded_displ = []
-        padded_centers = []
-        for i in range(len(displ)):
-            padding_size = max_agent_nums - displ[i].shape[0]
-            pad1 = (0, 0, 0, 0, 0, padding_size)
-            pad_displ = F.pad(displ[i], pad1, mode='constant', value=0)
-            padded_displ.append(pad_displ)
-            pad2 = (0,0,0,padding_size)
-            pad_centers = F.pad(centers[i],pad2,mode='constant', value=0)
-            padded_centers.append(pad_centers)
-            agents_per_sample[i] = max_agent_nums
-        displ_cat = torch.cat(padded_displ, dim=0)
-
-        # print(max_agent_nums)
-        # print(padding_displ_cat.shape)
-        # for i in range(len(displ)):
-        #     displ[i] = displ[i][:min_agent_nums,:,:]
-        #     agents_per_sample[i] = min_agent_nums
-        # Convert the list of tensors to tensors
-        # tensor ，shape：（sum（agents_per_sample），T ，feature_num=3）
-        # displ_cat = torch.cat(displ, dim=0)
-    
-        centers_cat = torch.cat(padded_centers, dim=0)
-        # print(displ_cat.shape)
-        # print(centers_cat.shape)
-        # tensor ，pos_encodeing shape：（sum（agents_per_sample），T ，latent_size）
+        displ_cat = torch.cat(displ,dim=0)
+        centers_cat = torch.cat(centers,dim=0)
         linear_output = self.linear_embedding(displ_cat)
         pos_encodeing = self.pos_encoder(linear_output)
         pos_encodeing = pos_encodeing + linear_output
@@ -148,17 +123,21 @@ class TMFModel(pl.LightningModule):
         out_transformer = self.encoder_transformer(pos_encodeing)
         out_transformer = out_transformer[:,-1,:]
         out_agent_gnn = self.agent_gnn(out_transformer, centers_cat, agents_per_sample)
-        out_agent_gnn = torch.stack(out_agent_gnn,dim=0)
-        # print(out_agent_gnn.shape)
-        output_cross_attender = self.cross_attender(out_agent_gnn)
+
+        max_agent_nums = max(agents_per_sample)
+        padded_out_agent_gnn = []
+       
+        for i in range(len(out_agent_gnn)):
+            padding_size = max_agent_nums - out_agent_gnn[i].shape[0]
+            pad = (0, 0, 0, padding_size)
+            pad_out_agent_gnn = F.pad(out_agent_gnn[i], pad, mode='constant', value=0)
+            padded_out_agent_gnn.append(pad_out_agent_gnn)
+        input_CA = torch.stack(padded_out_agent_gnn,dim=0)       
+
+        # print(input_CA.shape)
+        output_cross_attender = self.cross_attender(input_CA)
         # print(output_cross_attender.shape)
-        # output_cross_attender = []
-        # for i in range(len(out_agent_gnn)):
-        #     # out_spanet = self.spanet_transformer(out_agent_gnn[i].unsqueeze(0))
-        #     out_ca = self.cross_attender(out_agent_gnn[i])
-        #     output_cross_attender.append(out_ca)
-        
-        #output_cross_attender = torch.stack(output_cross_attender)
+
        
         mlp_input = output_cross_attender.view(-1,output_cross_attender.shape[-1])
         out_mlp = self.mlp(mlp_input)
